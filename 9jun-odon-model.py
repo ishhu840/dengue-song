@@ -5,11 +5,13 @@ import joblib
 import os
 import matplotlib.pyplot as plt
 import librosa.display
+import requests
 
 # Constants
+MODEL_URL = 'https://drive.google.com/uc?export=download&id=1iRMYXoIQfjDERuEKKD_IRDF-Q6a65nxR'
 MODEL_PATH = 'odon-mos.pkl'
 SAMPLE_RATE = 6000
-DURATION = 1  # in seconds
+DURATION = 1  # seconds
 
 # Label mapping from folder to readable names
 LABEL_ALIASES = {
@@ -21,7 +23,7 @@ LABEL_ALIASES = {
     "d_17_02_14_11_12_55": "c. quinquefasciatus"
 }
 
-# Mosquito info
+# Mosquito info dictionary
 MOSQUITO_INFO = {
     "ae aegupti": {
         "name": "🦟 Aedes aegypti",
@@ -49,6 +51,22 @@ MOSQUITO_INFO = {
     }
 }
 
+# Function to download model from Google Drive
+def download_model(url, destination):
+    if os.path.exists(destination):
+        return  # Already downloaded
+    with st.spinner("Downloading model... This may take a few minutes!"):
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+        total = int(response.headers.get('content-length', 0))
+        with open(destination, 'wb') as f:
+            downloaded = 0
+            for data in response.iter_content(chunk_size=8192):
+                downloaded += len(data)
+                f.write(data)
+                st.progress(min(downloaded / total, 1.0))
+    st.success("Model downloaded!")
+
 # Feature extraction
 def extract_features(audio, sr):
     mfccs = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=13)
@@ -67,7 +85,7 @@ def display_waveform_and_spectrogram(audio, sr):
     fig.colorbar(img, ax=ax)
     st.pyplot(fig)
 
-# App title
+# App setup
 st.set_page_config(page_title="Mosquito Identifier", page_icon="🦟", layout="centered")
 st.title("🦟 Mosquito Species Identifier")
 
@@ -78,50 +96,53 @@ Upload a **mosquito sound (.wav)** and this app will:
 - Show disease info for the **predicted species only**
 """)
 
+# Download model if not present
+download_model(MODEL_URL, MODEL_PATH)
+
 # Load model
-if not os.path.exists(MODEL_PATH):
-    st.error(f"❌ Model file not found: '{MODEL_PATH}'. Please place it in the app directory.")
-else:
+try:
     model = joblib.load(MODEL_PATH)
+except Exception as e:
+    st.error(f"❌ Failed to load model: {e}")
+    st.stop()
 
-    uploaded_file = st.file_uploader("📁 Upload mosquito sound (.wav)", type=["wav"])
+# File uploader
+uploaded_file = st.file_uploader("📁 Upload mosquito sound (.wav)", type=["wav"])
 
-    if uploaded_file:
-        st.audio(uploaded_file)
-        audio, sr = librosa.load(uploaded_file, sr=SAMPLE_RATE, duration=DURATION)
+if uploaded_file:
+    st.audio(uploaded_file)
+    audio, sr = librosa.load(uploaded_file, sr=SAMPLE_RATE, duration=DURATION)
 
-        display_waveform_and_spectrogram(audio, sr)
+    display_waveform_and_spectrogram(audio, sr)
 
-        # Prediction
-        features = extract_features(audio, sr).reshape(1, -1)
-        prediction = model.predict(features)[0]
+    features = extract_features(audio, sr).reshape(1, -1)
+    prediction = model.predict(features)[0]
 
-        # Normalize prediction
-        formatted_key = prediction.strip().lower().replace('_', ' ')
-        matched_code = None
-        for alias_code in LABEL_ALIASES:
-            if alias_code in formatted_key:
-                matched_code = alias_code
-                break
+    # Normalize prediction key
+    formatted_key = prediction.strip().lower().replace('_', ' ')
+    matched_code = None
+    for alias_code in LABEL_ALIASES:
+        if alias_code in formatted_key:
+            matched_code = alias_code
+            break
 
-        if matched_code:
-            species_key = LABEL_ALIASES.get(matched_code)
-        else:
-            species_key = LABEL_ALIASES.get(formatted_key, formatted_key)
+    if matched_code:
+        species_key = LABEL_ALIASES.get(matched_code)
+    else:
+        species_key = LABEL_ALIASES.get(formatted_key, formatted_key)
 
-        species_info_key = species_key.strip().lower()
+    species_info_key = species_key.strip().lower()
 
-        st.markdown(f"## ✅ **Predicted Species:** `{species_key.title()}`")
+    st.markdown(f"## ✅ **Predicted Species:** `{species_key.title()}`")
 
-        # Display info for predicted species only
-        info = MOSQUITO_INFO.get(species_info_key)
-        if info:
-            st.markdown("### 🧬 Mosquito Species & Disease Info")
-            st.markdown("---")
-            st.markdown(f"#### 🟢 **{info['name']}** *(Predicted)*")
-            st.markdown(f"- **Disease Info**: {info['description']}")
-        else:
-            st.info("No information found for the predicted species.")
+    info = MOSQUITO_INFO.get(species_info_key)
+    if info:
+        st.markdown("### 🧬 Mosquito Species & Disease Info")
+        st.markdown("---")
+        st.markdown(f"#### 🟢 **{info['name']}** *(Predicted)*")
+        st.markdown(f"- **Disease Info**: {info['description']}")
+    else:
+        st.info("No information found for the predicted species.")
 
 footer = """
     <style>
@@ -148,7 +169,5 @@ footer = """
     </div>
 """
 
-# Add bottom padding to content so it's not overlapped by fixed footer
 st.markdown("<div style='padding-bottom: 100px;'></div>", unsafe_allow_html=True)
-
 st.markdown(footer, unsafe_allow_html=True)
