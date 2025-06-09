@@ -8,12 +8,11 @@ import librosa.display
 import requests
 
 # Constants
-MODEL_URL = 'https://drive.google.com/uc?export=download&id=1iRMYXoIQfjDERuEKKD_IRDF-Q6a65nxR'
-MODEL_PATH = 'odon-mos.pkl'
+FILE_ID = "1iRMYXoIQfjDERuEKKD_IRDF-Q6a65nxR"
+MODEL_PATH = "odon-mos.pkl"
 SAMPLE_RATE = 6000
 DURATION = 1  # seconds
 
-# Label mapping from folder to readable names
 LABEL_ALIASES = {
     "d_17_02_08_21_36_05": "ae aegupti",
     "d_17_02_10_09_02_23": "ae. albopictus",
@@ -23,7 +22,6 @@ LABEL_ALIASES = {
     "d_17_02_14_11_12_55": "c. quinquefasciatus"
 }
 
-# Mosquito info dictionary
 MOSQUITO_INFO = {
     "ae aegupti": {
         "name": "🦟 Aedes aegypti",
@@ -51,28 +49,33 @@ MOSQUITO_INFO = {
     }
 }
 
-# Function to download model from Google Drive
-def download_model(url, destination):
+def download_model_from_google_drive(file_id, destination):
     if os.path.exists(destination):
-        return  # Already downloaded
-    with st.spinner("Downloading model... This may take a few minutes!"):
-        response = requests.get(url, stream=True)
-        response.raise_for_status()
-        total = int(response.headers.get('content-length', 0))
-        with open(destination, 'wb') as f:
-            downloaded = 0
-            for data in response.iter_content(chunk_size=8192):
-                downloaded += len(data)
-                f.write(data)
+        return
+    URL = "https://docs.google.com/uc?export=download"
+    session = requests.Session()
+    response = session.get(URL, params={'id': file_id}, stream=True)
+    token = None
+    for key, value in response.cookies.items():
+        if key.startswith('download_warning'):
+            token = value
+    if token:
+        params = {'id': file_id, 'confirm': token}
+        response = session.get(URL, params=params, stream=True)
+    total = int(response.headers.get('content-length', 0))
+    with open(destination, 'wb') as f:
+        downloaded = 0
+        for chunk in response.iter_content(32768):
+            if chunk:
+                downloaded += len(chunk)
+                f.write(chunk)
                 st.progress(min(downloaded / total, 1.0))
-    st.success("Model downloaded!")
+    st.success("✅ Model download complete!")
 
-# Feature extraction
 def extract_features(audio, sr):
     mfccs = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=13)
     return np.mean(mfccs.T, axis=0)
 
-# Plot waveform and spectrogram
 def display_waveform_and_spectrogram(audio, sr):
     st.markdown("### 🎧 Audio Analysis")
     fig, ax = plt.subplots(2, 1, figsize=(10, 4))
@@ -85,7 +88,7 @@ def display_waveform_and_spectrogram(audio, sr):
     fig.colorbar(img, ax=ax)
     st.pyplot(fig)
 
-# App setup
+# App Setup
 st.set_page_config(page_title="Mosquito Identifier", page_icon="🦟", layout="centered")
 st.title("🦟 Mosquito Species Identifier")
 
@@ -96,17 +99,15 @@ Upload a **mosquito sound (.wav)** and this app will:
 - Show disease info for the **predicted species only**
 """)
 
-# Download model if not present
-download_model(MODEL_URL, MODEL_PATH)
-
-# Load model
+# Download and Load Model
+download_model_from_google_drive(FILE_ID, MODEL_PATH)
 try:
     model = joblib.load(MODEL_PATH)
 except Exception as e:
     st.error(f"❌ Failed to load model: {e}")
     st.stop()
 
-# File uploader
+# File Uploader
 uploaded_file = st.file_uploader("📁 Upload mosquito sound (.wav)", type=["wav"])
 
 if uploaded_file:
@@ -118,7 +119,6 @@ if uploaded_file:
     features = extract_features(audio, sr).reshape(1, -1)
     prediction = model.predict(features)[0]
 
-    # Normalize prediction key
     formatted_key = prediction.strip().lower().replace('_', ' ')
     matched_code = None
     for alias_code in LABEL_ALIASES:
@@ -144,7 +144,9 @@ if uploaded_file:
     else:
         st.info("No information found for the predicted species.")
 
-footer = """
+# Footer
+st.markdown("<div style='padding-bottom: 100px;'></div>", unsafe_allow_html=True)
+st.markdown("""
     <style>
         .footer {
             position: fixed;
@@ -167,7 +169,4 @@ footer = """
         💻 <b>Developed by:</b> Odon’s Lab, PhD Students<br>
         📌 <i>Note: All data and resources used are publicly available.</i>
     </div>
-"""
-
-st.markdown("<div style='padding-bottom: 100px;'></div>", unsafe_allow_html=True)
-st.markdown(footer, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
