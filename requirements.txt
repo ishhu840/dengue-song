@@ -1,6 +1,6 @@
-streamlit
-librosa
+streamlit==1.35.0
+librosa==0.10.0.post2
+matplotlib
 numpy
 joblib
-matplotlib
 requests
