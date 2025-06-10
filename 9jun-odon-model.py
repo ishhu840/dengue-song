@@ -10,8 +10,8 @@ from pathlib import Path
 import os # Added for os.remove
 
 # ✅ Constants
-MODEL_PATH = str(Path.home() / "Documents" / "odon-mos-cnn.pth")
-LABEL_PATH = str(Path.home() / "Documents" / "odon-mos-labelsnew.pkl")
+MODEL_PATH = "odon-mos-cnn.pth"
+LABEL_PATH = "odon-mos-labelsnew.pkl"
 SAMPLE_RATE = 16000
 CLIP_DURATION = 1
 
